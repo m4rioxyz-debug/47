@@ -1,0 +1,14 @@
+.global-error {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--error);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 4px;
+  z-index: 1000;
+  font-weight: 500;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  animation: fadeIn 0.3s ease-out;
+}
