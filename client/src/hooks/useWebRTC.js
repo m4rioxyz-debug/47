@@ -118,6 +118,8 @@ export default function useWebRTC(socket, currentVoiceRoom) {
         }
       };
 
+      const candidateQueues = {}; // socketId -> queue[]
+
       const handleSignal = async ({ senderSocketId, senderUser, signalData }) => {
         let peerContext = peersRef.current[senderSocketId];
         
@@ -127,15 +129,39 @@ export default function useWebRTC(socket, currentVoiceRoom) {
 
         const { pc } = peerContext;
 
-        if (signalData.type === 'offer') {
-          await pc.setRemoteDescription(new RTCSessionDescription(signalData));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          socket.emit('voice_signal', { targetSocketId: senderSocketId, signalData: pc.localDescription });
-        } else if (signalData.type === 'answer') {
-          await pc.setRemoteDescription(new RTCSessionDescription(signalData));
-        } else if (signalData.candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(signalData));
+        try {
+          if (signalData.type === 'offer') {
+            await pc.setRemoteDescription(new RTCSessionDescription(signalData));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit('voice_signal', { targetSocketId: senderSocketId, signalData: pc.localDescription });
+            
+            // Process buffered candidates
+            if (candidateQueues[senderSocketId]) {
+              for (const cand of candidateQueues[senderSocketId]) {
+                await pc.addIceCandidate(new RTCIceCandidate(cand));
+              }
+              delete candidateQueues[senderSocketId];
+            }
+          } else if (signalData.type === 'answer') {
+            await pc.setRemoteDescription(new RTCSessionDescription(signalData));
+             // Process buffered candidates
+             if (candidateQueues[senderSocketId]) {
+              for (const cand of candidateQueues[senderSocketId]) {
+                await pc.addIceCandidate(new RTCIceCandidate(cand));
+              }
+              delete candidateQueues[senderSocketId];
+            }
+          } else if (signalData.candidate) {
+            if (pc.remoteDescription) {
+              await pc.addIceCandidate(new RTCIceCandidate(signalData));
+            } else {
+              if (!candidateQueues[senderSocketId]) candidateQueues[senderSocketId] = [];
+              candidateQueues[senderSocketId].push(signalData);
+            }
+          }
+        } catch (e) {
+          console.error("Signaling error:", e);
         }
       };
 
@@ -164,6 +190,10 @@ export default function useWebRTC(socket, currentVoiceRoom) {
 
   const createPeer = (targetSocketId, targetUser, stream, initiator) => {
     const pc = new RTCPeerConnection(ICE_SERVERS);
+    
+    pc.oniceconnectionstatechange = () => {
+      console.log(`Connection state with ${targetUser}: ${pc.iceConnectionState}`);
+    };
 
     if (stream) {
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
