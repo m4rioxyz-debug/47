@@ -52,7 +52,7 @@ io.on('connection', (socket) => {
       return {
         user: name,
         voiceRoom: data.voiceRoom || null,
-        role: storeData.role || 'member',
+        role: data.role || 'member', // Using role from specific room state
         avatar: storeData.avatar || null
       };
     });
@@ -65,16 +65,20 @@ io.on('connection', (socket) => {
 
     const nameKey = user.toLowerCase();
     
-    // Automatically register or fetch user WITHOUT password check
+    // Ensure room state exists
+    if (!roomUsersState.has(room)) roomUsersState.set(room, new Map());
+    const roomMap = roomUsersState.get(room);
+
+    // If first person in THIS specific room, they become ADMIN
+    const isFirstInRoom = roomMap.size === 0;
+    const userRole = isFirstInRoom ? 'admin' : 'member';
+
+    // Register user in global store for avatars
     if (!userStore.has(nameKey)) {
-      const isFirst = userStore.size === 0;
-      userStore.set(nameKey, {
-        role: isFirst ? 'admin' : 'member',
-        avatar: null
-      });
+      userStore.set(nameKey, { avatar: null });
     }
     
-    // Prevent duplicate sessions in the same room
+    // Prevent duplicate sessions...
     const sessionKey = `${room}_${user}`;
     if (activeSessions.has(sessionKey)) {
       return socket.emit('error', 'User is already in this room.');
@@ -83,10 +87,9 @@ io.on('connection', (socket) => {
     currentRoom = room;
     currentUser = user;
     
-    // Track session
+    // Track session and role inside this room
     activeSessions.set(sessionKey, socket.id);
-    if (!roomUsersState.has(room)) roomUsersState.set(room, new Map());
-    roomUsersState.get(room).set(user, { voiceRoom: currentVoiceRoom });
+    roomMap.set(user, { voiceRoom: currentVoiceRoom, role: userRole });
     
     socket.join(room);
 
@@ -114,13 +117,15 @@ io.on('connection', (socket) => {
     userRateLimits.set(socket.id, now);
 
     const storeData = userStore.get(currentUser.toLowerCase()) || {};
+    const roomMap = roomUsersState.get(currentRoom);
+    const userData = roomMap ? roomMap.get(currentUser) : {};
 
     const message = {
       id: Date.now().toString(36) + Math.random().toString(36).substr(2),
       room: currentRoom,
       user: currentUser,
       content,
-      role: storeData.role || 'member',
+      role: userData.role || 'member',
       avatar: storeData.avatar || null,
       timestamp: new Date().toISOString()
     };
@@ -148,9 +153,10 @@ io.on('connection', (socket) => {
   });
 
   socket.on('delete_message', (msgId) => {
-    if (!currentUser) return;
-    const data = userStore.get(currentUser.toLowerCase());
-    if (!data || (data.role !== 'admin' && data.role !== 'mod')) return socket.emit('error', 'No permission to delete messages.');
+    if (!currentUser || !currentRoom) return;
+    const roomMap = roomUsersState.get(currentRoom);
+    const userData = roomMap ? roomMap.get(currentUser) : null;
+    if (!userData || (userData.role !== 'admin' && userData.role !== 'mod')) return socket.emit('error', 'No permission to delete messages.');
     
     const index = messagesDB.findIndex(m => m.id === msgId);
     if (index !== -1 && messagesDB[index].room === currentRoom) {
@@ -160,9 +166,10 @@ io.on('connection', (socket) => {
   });
 
   socket.on('kick_user', (targetUser) => {
-    if (!currentUser) return;
-    const data = userStore.get(currentUser.toLowerCase());
-    if (!data || data.role !== 'admin') return socket.emit('error', 'No permission to kick users.');
+    if (!currentUser || !currentRoom) return;
+    const roomMap = roomUsersState.get(currentRoom);
+    const userData = roomMap ? roomMap.get(currentUser) : null;
+    if (!userData || userData.role !== 'admin') return socket.emit('error', 'No permission to kick users.');
     
     io.to(currentRoom).emit('user_kicked', targetUser);
     
@@ -179,14 +186,15 @@ io.on('connection', (socket) => {
   });
 
   socket.on('set_role', ({ targetUser, newRole }) => {
-    if (!currentUser) return;
-    const data = userStore.get(currentUser.toLowerCase());
-    if (!data || data.role !== 'admin') return socket.emit('error', 'No permission to change roles.');
+    if (!currentUser || !currentRoom) return;
+    const roomMap = roomUsersState.get(currentRoom);
+    const userData = roomMap ? roomMap.get(currentUser) : null;
+    if (!userData || userData.role !== 'admin') return socket.emit('error', 'No permission to change roles.');
     
-    const tgtData = userStore.get(targetUser.toLowerCase());
-    if (tgtData) {
-      tgtData.role = newRole;
-      if (currentRoom) broadcastRoomUsers(currentRoom);
+    const targetData = roomMap.get(targetUser);
+    if (targetData) {
+      targetData.role = newRole;
+      broadcastRoomUsers(currentRoom);
     }
   });
 
