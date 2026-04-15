@@ -74,6 +74,82 @@ export default function useWebRTC(socket, currentVoiceRoom) {
 
     let isSubscribed = true;
 
+    const handleVoiceUsers = (existingUsers) => {
+      existingUsers.forEach(user => {
+        createPeer(user.socketId, user.user, localStreamRef.current, true);
+      });
+    };
+
+    const handleUserJoined = (newUser) => {
+      // Just record that a user exists, wait for them to send an offer
+      // createPeer without passing initiator=true creates a passive PC
+    };
+
+    const handleUserLeft = ({ socketId }) => {
+      if (peersRef.current[socketId]) {
+        peersRef.current[socketId].pc.close();
+        delete peersRef.current[socketId];
+        setPeers(prev => {
+          const next = { ...prev };
+          delete next[socketId];
+          return next;
+        });
+      }
+    };
+
+    const candidateQueues = {}; // socketId -> queue[]
+
+    const handleSignal = async ({ senderSocketId, senderUser, signalData }) => {
+      let peerContext = peersRef.current[senderSocketId];
+      if (!peerContext) {
+        peerContext = createPeer(senderSocketId, senderUser, localStreamRef.current, false);
+      }
+
+      const { pc } = peerContext;
+
+      try {
+        if (signalData.type === 'offer') {
+          if (pc.signalingState !== 'stable') {
+              await Promise.all([
+                pc.setLocalDescription({type: 'rollback'}),
+                pc.setRemoteDescription(new RTCSessionDescription(signalData))
+              ]);
+          } else {
+            await pc.setRemoteDescription(new RTCSessionDescription(signalData));
+          }
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          socket.emit('voice_signal', { targetSocketId: senderSocketId, signalData: pc.localDescription });
+        } else if (signalData.type === 'answer') {
+          await pc.setRemoteDescription(new RTCSessionDescription(signalData));
+        } else if (signalData.candidate) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(signalData));
+          } catch (e) {
+            if (!pc.remoteDescription) {
+               if (!candidateQueues[senderSocketId]) candidateQueues[senderSocketId] = [];
+               candidateQueues[senderSocketId].push(signalData);
+            }
+          }
+        }
+        
+        // Process queue if just became stable
+        if (pc.remoteDescription && candidateQueues[senderSocketId]) {
+          for (const cand of candidateQueues[senderSocketId]) {
+            await pc.addIceCandidate(new RTCIceCandidate(cand));
+          }
+          delete candidateQueues[senderSocketId];
+        }
+      } catch (e) {
+        console.error("Critical signaling error:", e);
+      }
+    };
+
+    socket.on('voice_users', handleVoiceUsers);
+    socket.on('user_joined_voice', handleUserJoined);
+    socket.on('user_left_voice', handleUserLeft);
+    socket.on('voice_signal', handleSignal);
+
     // Get microphone
     navigator.mediaDevices.getUserMedia({ 
       audio: {
@@ -94,93 +170,16 @@ export default function useWebRTC(socket, currentVoiceRoom) {
       // Now join the voice room server-side
       socket.emit('join_voice', currentVoiceRoom);
 
-      // Handle receiving list of existing users
-      const handleVoiceUsers = (existingUsers) => {
-        existingUsers.forEach(user => {
-          createPeer(user.socketId, user.user, stream, true);
-        });
-      };
-
-      const handleUserJoined = (newUser) => {
-        // Just record that a user exists, wait for them to send an offer
-        // createPeer without passing initiator=true creates a passive PC
-      };
-
-      const handleUserLeft = ({ socketId }) => {
-        if (peersRef.current[socketId]) {
-          peersRef.current[socketId].pc.close();
-          delete peersRef.current[socketId];
-          setPeers(prev => {
-            const next = { ...prev };
-            delete next[socketId];
-            return next;
-          });
-        }
-      };
-
-      const candidateQueues = {}; // socketId -> queue[]
-
-      const handleSignal = async ({ senderSocketId, senderUser, signalData }) => {
-        let peerContext = peersRef.current[senderSocketId];
-        if (!peerContext) {
-          peerContext = createPeer(senderSocketId, senderUser, localStreamRef.current, false);
-        }
-
-        const { pc } = peerContext;
-
-        try {
-          if (signalData.type === 'offer') {
-            if (pc.signalingState !== 'stable') {
-                await Promise.all([
-                  pc.setLocalDescription({type: 'rollback'}),
-                  pc.setRemoteDescription(new RTCSessionDescription(signalData))
-                ]);
-            } else {
-              await pc.setRemoteDescription(new RTCSessionDescription(signalData));
-            }
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            socket.emit('voice_signal', { targetSocketId: senderSocketId, signalData: pc.localDescription });
-          } else if (signalData.type === 'answer') {
-            await pc.setRemoteDescription(new RTCSessionDescription(signalData));
-          } else if (signalData.candidate) {
-            try {
-              await pc.addIceCandidate(new RTCIceCandidate(signalData));
-            } catch (e) {
-              if (!pc.remoteDescription) {
-                 if (!candidateQueues[senderSocketId]) candidateQueues[senderSocketId] = [];
-                 candidateQueues[senderSocketId].push(signalData);
-              }
-            }
-          }
-          
-          // Process queue if just became stable
-          if (pc.remoteDescription && candidateQueues[senderSocketId]) {
-            for (const cand of candidateQueues[senderSocketId]) {
-              await pc.addIceCandidate(new RTCIceCandidate(cand));
-            }
-            delete candidateQueues[senderSocketId];
-          }
-        } catch (e) {
-          console.error("Critical signaling error:", e);
-        }
-      };
-
-      socket.on('voice_users', handleVoiceUsers);
-      socket.on('user_joined_voice', handleUserJoined);
-      socket.on('user_left_voice', handleUserLeft);
-      socket.on('voice_signal', handleSignal);
-
-      return () => {
-        socket.off('voice_users', handleVoiceUsers);
-        socket.off('user_joined_voice', handleUserJoined);
-        socket.off('user_left_voice', handleUserLeft);
-        socket.off('voice_signal', handleSignal);
-      };
+      // If we already have peers that were created while we were waiting for the mic, 
+      // we need to add our tracks to them now!
+      Object.values(peersRef.current).forEach(p => {
+        stream.getTracks().forEach(track => p.pc.addTrack(track, stream));
+      });
     })
     .catch(err => {
       console.error("Microphone access denied or error:", err);
-      // Fallback: join without mic if possible, but for simple app just log.
+      // Even if mic fails, we still join so we can HEAR others
+      socket.emit('join_voice', currentVoiceRoom);
     });
 
     return () => {
