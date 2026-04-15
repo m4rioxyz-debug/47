@@ -1,0 +1,25 @@
+{
+  "token": "YOUR_ACTUAL_BOT_TOKEN",
+  "clientId": "",
+  "guildId": "1398798026704949281",
+  "botAdmins": [
+    "YOUR_USER_ID"
+  ],
+  "roles": {
+    "autoRole": "1489741535502139557",
+    "muteRole": "",
+    "boosterRole": "1412043910322327593",
+    "staffRole": "1489742761853980674"
+  },
+  "channels": {
+    "welcome": "1489745144440815707",
+    "logs": "1491429295371849859",
+    "ticketsCategory": "1489745147154530314"
+  },
+  "antiNuke": {
+    "enabled": true,
+    "maxActionsBeforePunish": 5,
+    "timeWindowMs": 10000,
+    "punishment": "ban"
+  }
+}
