@@ -3,29 +3,31 @@ import { MessageSquare } from 'lucide-react';
 import './Login.css';
 
 export default function Login({ onJoin }) {
+  const [step, setStep] = useState(1); // 1: Name, 2: Room Choice
   const [name, setName] = useState('');
-  const [password, setPassword] = useState('');
+  const [roomCode, setRoomCode] = useState('');
   const [error, setError] = useState('');
 
-  // Check auto-login on mount
-  React.useEffect(() => {
-    const saved = localStorage.getItem('base47_session');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.name) onJoin(parsed.name, 'General', parsed.password);
-      } catch (e) {}
-    }
-  }, []);
+  const generateRandomCode = () => {
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
+  };
 
-  const handleSubmit = (e) => {
+  const handleNext = (e) => {
     e.preventDefault();
     if (!name.trim()) return setError('Display name is required');
-    
-    localStorage.setItem('base47_session', JSON.stringify({ name: name.trim(), password }));
-    
-    // Hardcode room 'General'
-    onJoin(name.trim(), 'General', password);
+    setStep(2);
+    setError('');
+  };
+
+  const handleCreate = () => {
+    const newCode = generateRandomCode();
+    onJoin(name.trim(), newCode);
+  };
+
+  const handleJoinByCode = (e) => {
+    e.preventDefault();
+    if (!roomCode.trim()) return setError('Room code is required');
+    onJoin(name.trim(), roomCode.trim().toUpperCase());
   };
 
   return (
@@ -35,39 +37,54 @@ export default function Login({ onJoin }) {
           <div className="icon-wrapper">
             <MessageSquare size={32} color="var(--text-primary)" />
           </div>
-          <h2>Welcome to Base 47</h2>
-          <p>We're so excited to see you here!</p>
+          <h2>Base 47</h2>
+          <p>{step === 1 ? "Start by picking a name" : `Welcome, ${name}!`}</p>
         </div>
         
-        <form onSubmit={handleSubmit} className="login-form">
-          <div className="form-group">
-            <label>DISPLAY NAME <span className="required">*</span></label>
-            <input 
-              type="text" 
-              className="input-field" 
-              value={name}
-              onChange={e => setName(e.target.value)}
-              maxLength={32}
-              autoFocus
-            />
-          </div>
-          
-          <div className="form-group">
-            <label>PASSWORD <span className="optional">(Optional)</span></label>
-            <input 
-              type="password" 
-              className="input-field" 
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="Keep it blank for guest"
-              maxLength={32}
-            />
-          </div>
+        {step === 1 ? (
+          <form onSubmit={handleNext} className="login-form">
+            <div className="form-group">
+              <label>DISPLAY NAME</label>
+              <input 
+                type="text" 
+                className="input-field" 
+                value={name}
+                onChange={e => setName(e.target.value)}
+                maxLength={20}
+                autoFocus
+                placeholder="e.g. Ghost"
+              />
+            </div>
+            {error && <div className="error-text">{error}</div>}
+            <button type="submit" className="btn submit-btn">Continue</button>
+          </form>
+        ) : (
+          <div className="room-actions">
+            <button onClick={handleCreate} className="btn create-btn">
+              Create New Room
+              <span>Generate a unique 6-digit code</span>
+            </button>
 
-          {error && <div className="error-text">{error}</div>}
+            <div className="divider"><span>OR</span></div>
 
-          <button type="submit" className="btn submit-btn">Enter App</button>
-        </form>
+            <form onSubmit={handleJoinByCode} className="join-form">
+              <div className="form-group">
+                <input 
+                  type="text" 
+                  className="input-field" 
+                  value={roomCode}
+                  onChange={e => setRoomCode(e.target.value)}
+                  placeholder="Enter 6-digit room code"
+                  maxLength={6}
+                />
+              </div>
+              {error && <div className="error-text">{error}</div>}
+              <button type="submit" className="btn join-btn">Join Private Room</button>
+            </form>
+            
+            <button className="back-link" onClick={() => setStep(1)}>← Change Name</button>
+          </div>
+        )}
       </div>
     </div>
   );

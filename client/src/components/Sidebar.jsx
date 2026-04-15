@@ -1,10 +1,12 @@
-import { Hash, LogOut, Settings, X, Volume2, Upload, Trash2, Download } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Hash, LogOut, Settings, X, Volume2, Upload, Trash2, Download, Copy } from 'lucide-react';
 import VoiceManager from './VoiceManager';
 import './Sidebar.css';
 
 export default function Sidebar({ room, user, onLogout, isConnected, isOpen, onClose, socket, onSpeakingChange, myProfile }) {
   const [currentVoiceRoom, setCurrentVoiceRoom] = useState(null);
   const [installPrompt, setInstallPrompt] = useState(null);
+  const [copied, setCopied] = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -15,6 +17,12 @@ export default function Sidebar({ room, user, onLogout, isConnected, isOpen, onC
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
+
+  const copyRoomCode = () => {
+    navigator.clipboard.writeText(room);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const handleInstallClick = async () => {
     if (!installPrompt) return;
@@ -59,7 +67,11 @@ export default function Sidebar({ room, user, onLogout, isConnected, isOpen, onC
   return (
     <div className={`sidebar ${isOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
-          <h2>Base 47</h2>
+           <div className="room-title-group" onClick={copyRoomCode} title="Click to copy room code">
+              <h2>#{room}</h2>
+              <Copy size={14} className="copy-icon" />
+              {copied && <span className="copied-toast">Copied!</span>}
+           </div>
           {isOpen && <X className="mobile-close" size={20} onClick={onClose} />}
         </div>
       
