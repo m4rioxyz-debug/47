@@ -32,6 +32,26 @@ module.exports = {
                 .setFooter({ text: `Banned by ${interaction.user.tag}` });
 
             await interaction.editReply({ embeds: [embed] });
+
+            // ─── Logging ──────────────────────────────────────────
+            const { config } = interaction.client;
+            if (config && config.channels && config.channels.logs) {
+                const logChannel = interaction.guild.channels.cache.get(config.channels.logs);
+                if (logChannel) {
+                    const logEmbed = new EmbedBuilder()
+                        .setTitle('Member Banned')
+                        .setColor('#FF0000')
+                        .setThumbnail(user.displayAvatarURL())
+                        .addFields(
+                            { name: '👤 Target', value: `${user.tag} (${user.id})`, inline: true },
+                            { name: '🛡️ Moderator', value: `${interaction.user.tag} (${interaction.user.id})`, inline: true },
+                            { name: '📝 Reason', value: reason }
+                        )
+                        .setTimestamp();
+                    
+                    await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+                }
+            }
         } catch (error) {
             console.error('[BAN ERROR]:', error);
             await interaction.editReply({ content: `❌ An error occurred while trying to ban this user: ${error.message}` });

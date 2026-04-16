@@ -35,7 +35,25 @@ module.exports = {
 
             await interaction.editReply({ embeds: [embed] });
 
-            // Optional: Log to a channel if needed
+            // ─── Logging ──────────────────────────────────────────
+            const { config } = interaction.client;
+            if (config && config.channels && config.channels.logs) {
+                const logChannel = interaction.guild.channels.cache.get(config.channels.logs);
+                if (logChannel) {
+                    const logEmbed = new EmbedBuilder()
+                        .setTitle('Member Kicked')
+                        .setColor('#FFA500')
+                        .setThumbnail(user.displayAvatarURL())
+                        .addFields(
+                            { name: '👤 Target', value: `${user.tag} (${user.id})`, inline: true },
+                            { name: '🛡️ Moderator', value: `${interaction.user.tag} (${interaction.user.id})`, inline: true },
+                            { name: '📝 Reason', value: reason }
+                        )
+                        .setTimestamp();
+                    
+                    await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+                }
+            }
         } catch (error) {
             console.error('[KICK ERROR]:', error);
             await interaction.editReply({ content: `❌ An error occurred while trying to kick this user: ${error.message}` });
