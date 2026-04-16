@@ -10,20 +10,31 @@ module.exports = {
     async execute(interaction) {
         const user = interaction.options.getUser('target');
         const reason = interaction.options.getString('reason') ?? 'No reason provided';
-        const member = await interaction.guild.members.fetch(user.id);
 
-        if (!member.bannable) {
-            return interaction.reply({ content: 'I cannot ban this user!', ephemeral: true });
+        await interaction.deferReply({ ephemeral: true });
+
+        try {
+            const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+
+            // Note: You can ban users who are not in the server, but member.bannable requires a GuildMember object.
+            // If we want to ban someone not in the server, we use interaction.guild.bans.create(user.id, { reason })
+            if (member && !member.bannable) {
+                return interaction.editReply({ content: '❌ I cannot ban this user! They might have a higher role than me or I lack the necessary permissions.' });
+            }
+
+            await interaction.guild.bans.create(user.id, { reason });
+            
+            const embed = new EmbedBuilder()
+                .setTitle('Member Banned')
+                .setDescription(`${user} has been banned.\n**Reason:** ${reason}`)
+                .setColor('#FF0000')
+                .setTimestamp()
+                .setFooter({ text: `Banned by ${interaction.user.tag}` });
+
+            await interaction.editReply({ embeds: [embed] });
+        } catch (error) {
+            console.error('[BAN ERROR]:', error);
+            await interaction.editReply({ content: `❌ An error occurred while trying to ban this user: ${error.message}` });
         }
-
-        await member.ban({ reason });
-        
-        const embed = new EmbedBuilder()
-            .setTitle('Member Banned')
-            .setDescription(`${user.tag} has been banned for: ${reason}`)
-            .setColor('#FF0000')
-            .setTimestamp();
-
-        await interaction.reply({ embeds: [embed] });
     },
 };

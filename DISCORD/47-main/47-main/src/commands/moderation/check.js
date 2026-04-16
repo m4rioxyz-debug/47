@@ -8,6 +8,7 @@ module.exports = {
         .addUserOption(option => option.setName('target').setDescription('The user to check').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
     async execute(interaction) {
+        await interaction.deferReply();
         const user = interaction.options.getUser('target');
         const member = await interaction.guild.members.fetch(user.id).catch(() => null);
         const db = readDb();
@@ -36,6 +37,6 @@ module.exports = {
             )
             .setTimestamp();
 
-        await interaction.reply({ embeds: [embed] });
+        await interaction.editReply({ embeds: [embed] });
     },
 };

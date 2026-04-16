@@ -10,20 +10,35 @@ module.exports = {
     async execute(interaction) {
         const user = interaction.options.getUser('target');
         const reason = interaction.options.getString('reason') ?? 'No reason provided';
-        const member = await interaction.guild.members.fetch(user.id);
-
-        if (!member.kickable) {
-            return interaction.reply({ content: 'I cannot kick this user!', ephemeral: true });
-        }
-
-        await member.kick(reason);
         
-        const embed = new EmbedBuilder()
-            .setTitle('Member Kicked')
-            .setDescription(`${user.tag} has been kicked for: ${reason}`)
-            .setColor('#FFA500')
-            .setTimestamp();
+        await interaction.deferReply({ ephemeral: true });
 
-        await interaction.reply({ embeds: [embed] });
+        try {
+            const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+
+            if (!member) {
+                return interaction.editReply({ content: '❌ This user is not in the server.' });
+            }
+
+            if (!member.kickable) {
+                return interaction.editReply({ content: '❌ I cannot kick this user! They might have a higher role than me or I lack the necessary permissions.' });
+            }
+
+            await member.kick(reason);
+            
+            const embed = new EmbedBuilder()
+                .setTitle('Member Kicked')
+                .setDescription(`${user} has been kicked.\n**Reason:** ${reason}`)
+                .setColor('#FFA500')
+                .setTimestamp()
+                .setFooter({ text: `Kicked by ${interaction.user.tag}` });
+
+            await interaction.editReply({ embeds: [embed] });
+
+            // Optional: Log to a channel if needed
+        } catch (error) {
+            console.error('[KICK ERROR]:', error);
+            await interaction.editReply({ content: `❌ An error occurred while trying to kick this user: ${error.message}` });
+        }
     },
 };

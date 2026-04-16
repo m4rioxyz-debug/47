@@ -9,8 +9,12 @@ module.exports = {
     async execute(interaction) {
         const amount = interaction.options.getInteger('amount');
         
-        const messages = await interaction.channel.bulkDelete(amount, true);
-        
-        await interaction.reply({ content: `Successfully deleted ${messages.size} messages.`, ephemeral: true });
+        try {
+            const messages = await interaction.channel.bulkDelete(amount, true);
+            await interaction.reply({ content: `✅ Successfully deleted ${messages.size} messages.`, ephemeral: true });
+        } catch (error) {
+            console.error('[CLEAR ERROR]:', error);
+            await interaction.reply({ content: `❌ Failed to delete messages: ${error.message}`, ephemeral: true });
+        }
     },
 };
